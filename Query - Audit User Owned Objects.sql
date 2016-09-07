@@ -1,3 +1,4 @@
+
 /*
  
 Query to Audit User Owned Objects
@@ -7,8 +8,14 @@ Query to Audit User Owned Objects
 -- List all Packages owned by a user
 -- List all Scheams owned by a user
 -- List all Objects owned by a user
--- List all Endpoints owned by a user
-
+-- List all endpoints owned by a user
+-- List all Event objects owned by a user
+ 
+-- Edit
+        Added logic to test for if SQL version is lower than 2008 for SSIS packages
+        Fixed variable issue
+        Changed If logic from IF 2008 > stop to only check at SSIS package
+        Use sys.databases to clean up working iwth 2005. 2008 2012 instances
  
 */
 IF OBJECT_ID('tempdb..#ownerTable') IS NOT NULL
@@ -106,44 +113,40 @@ ELSE
 /*
 -- List all Schemas owned by Users
 ---------------------------------------------------------------------------------------------------------------------- */
-DECLARE @DB_NameSch VARCHAR(100)
-DECLARE @CommandSch NVARCHAR(MAX)
+DECLARE @DB_NameSch VARCHAR(100);
+DECLARE @CommandSch NVARCHAR(MAX);
 DECLARE database_cursor CURSOR
 FOR
     SELECT  name
     FROM    sys.databases
-    WHERE state_desc = 'ONLINE' AND user_access_desc = 'MULTI_USER'
+    WHERE   state_desc = 'ONLINE'
+            AND user_access_desc = 'MULTI_USER';
  
-OPEN database_cursor
+OPEN database_cursor;
  
-FETCH NEXT FROM database_cursor INTO @DB_NameSch
+FETCH NEXT FROM database_cursor INTO @DB_NameSch;
  
 WHILE @@FETCH_STATUS = 0
     BEGIN
         SELECT  @CommandSch = 'USE [' + @DB_NameSch + '] SELECT ' + ''''
-                + 'Schema Owned by a User' + '''' + ', ' + '''' + @DB_NameSch
-                + ''''
-                + ' as [DatabaseName], name as ''Schema'' , USER_NAME(principal_id) AS ''Owner'' FROM sys.schemas
-                WHERE name NOT IN (''TargetServersRole'', ''SQLAgentUserRole'', ''SQLAgentReaderRole'', ''SQLAgentOperatorRole'', ''DatabaseMailUserRole''
-, ''db_ssisadmin'', ''db_ssisltduser'', ''db_ssisoperator'', ''RSExecRole'')
-AND schema_id > 4
-AND schema_id < 16384 AND principal_id <> 1
-'
+                + 'Schema Owned by a User'  + '''' + ' AS [Issue], 
+						' + '''' + @DB_NameSch + ''''
+                + ', s.name AS [Object], ''Schema'' AS [ObjectType],  u.name AS [Owner] FROM sys.schemas s INNER JOIN sys.sysusers u ON u.uid = s.principal_id WHERE s.name <> u.name';
        -- PRINT @CommandSch
-        -- List all Non SA Package Owners
         INSERT  INTO #ownerTable
                 ( [Issue] ,
                   [Database] ,
                   [Object] ,
+				  [ObjectType],
                   [Owner]
                 )
-                EXEC sp_executesql @CommandSch
+                EXEC sp_executesql @CommandSch;
  
-        FETCH NEXT FROM database_cursor INTO @DB_NameSch
-    END
+        FETCH NEXT FROM database_cursor INTO @DB_NameSch;
+    END;
  
-CLOSE database_cursor
-DEALLOCATE database_cursor
+CLOSE database_cursor;
+DEALLOCATE database_cursor;
  
 /*
 -- Objects Owned by User
@@ -230,3 +233,7 @@ FROM    #ownerTable;
  
 -- drop table
 DROP TABLE #ownerTable;
+
+
+
+
